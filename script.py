@@ -7,53 +7,147 @@
 """
 
 import requests
+import csv
+import math
+import re
+import sys
 from bs4 import BeautifulSoup	
+from urlparse import urljoin
 
-session = requests.Session()
+BASE_URL = 'https://maizepages.umich.edu'
 
-# Login information
-payload = {
-		'login': username,
-		'password': password }
+class UserSession(object):
+	"""Class that authenticates a user for access to Maize Pages, and provides
+	methods for parsing and writing data to csv.
 
-# Get cookie
-res = session.get("https://maizepages.umich.edu/account/logon")
-res.raise_for_status()
+	Attributes:
+		session: requests session to persist cookies/authentication things
+	"""
+	def __init__(self, username, password):
+		self.session = requests.Session()
+		# Get cookie
+		response = self.session.get("https://maizepages.umich.edu/account/logon")
 
-# Find hidden input fields
-soup = BeautifulSoup(res.text, "html.parser")
+		# Get input fields and create payload with username/password
+		payload ={}
+		soup = BeautifulSoup(response.text, 'html.parser')
+		for input in soup.find_all("input"):
+			payload[input.get("name")] = input.get("value")
+		payload['login'] = username
+		payload['password'] = password
 
-for input in soup.find_all("input"):
-	payload[input.get("name")] = input.get("value")
+		# Post to weblogin and subsequently go through all authentication steps
+		try:
+			self.send_post("https://weblogin.umich.edu/cosign-bin/cosign.cgi", payload)
+		except ValueError as e:
+			print "Error logging in with credentials"
+			sys.exit()
 
-# Login to CAS
-res = session.post("https://weblogin.umich.edu/cosign-bin/cosign.cgi", data=payload)
+		try:
+			self.check_auth
+		except ValueError as e:
+			print e
+			sys.exit()
 
-# Verify login 
-page_res = session.get("https://maizepages.umich.edu")
-page_res.raise_for_status()
+	# Description: Checks that authentication worked by searching for "Sign in"
+	#	in the HTTP response
+	def check_auth(self):
+		response = self.session.get("https://maizepages.umich.edu")
+		if(not 'Sign in' in response.text):
+			print "Logged in successfully"
+		else:
+			raise ValueError
 
-# "Sign in" should not be on the resulting page since user should be signed in
-logon_success = not "Sign in" in page_res.text
-print "Logged on successfully: " + str(logon_success)
+	# Description: Recursive function for jumping through all the authentication
+	#	steps 
+	def send_post(self, url, payload):
+		# Send HTTP POST request
+		response = self.session.post(url, data=payload)
+		response.raise_for_status()
+		
+		# Base case for returning after the appropriate post requests have been entered
+		if response.url == BASE_URL + '/':
+			return
 
+		soup = BeautifulSoup(response.text, 'html.parser')
 
-# # Outerloop-
-# res = session.get(baseurl + "/organizations", verify=False)
-# res.raise_for_status() 
+		# Construct the next url to recurse into
+		relative_url = soup.find('form').get('action')
+		absolute_url = urljoin(response.url, relative_url)
+		# Checks that recursion doesn't enter infinite loop
+		if absolute_url == url:
+			raise ValueError
 
-# pagination_soup = BeautifulSoup(res.text, "html5lib")
+		# Gather input fields into payload
+		payload.clear()
+		for input in soup.find_all("input"):
+			payload[input.get("name")] = input.get("value")
 
-# # Create list of all url's on page
-# pages = pagination_soup.find_all('h5')
+		self.send_post(absolute_url, payload)
 
-# # Innerloop- visit each URL
-# for page in pages:
-# 	print page.a['href'] + ', ' + page.a.string 
+	# Description: Takes in an organization's page url and 
+	#	returns a tuple containing (name, email, org name)
+	def parse_for_name_and_email(self, org_page_url):
+		response = self.session.get(org_page_url)
+		response.raise_for_status()
+		soup = BeautifulSoup(response.text, 'html.parser')
+		tag = soup.find(class_ = "member-modal")
+		
+		# Get name
+		name = tag.string
+		# Get email
+		email = ''
+		try:
+			email_resp = self.session.get(BASE_URL + tag['href'])
+			email_resp.raise_for_status()
+			email_soup = BeautifulSoup(email_resp.text, 'html.parser')
+			email_tag = email_soup.find(class_ = "email")
+			m = re.search('mailto:(.+)', email_tag['href'])
+		except:
+			# do nothing
+			pass
+		else:
+			if m:
+				email = m.group(1)
+		# Get org name
+		orgname = soup.find(class_='h2__avatarandbutton').get_text().encode('utf-8').strip()
 
-# 	page_res = requests.get(baseurl + page.a['href'], verify=False)
-# 	page_res.raise_for_status()
+		return (name, email, orgname)
 
-# 	page_soup = BeautifulSoup(page_res.text, "html5lib")
-	
+	# Description: Visits each organization page on maizepages and calls
+	#	parse_for_name_and_email on each. Takes the results and outputs them
+	#	to a csv file.
+	def run_all(self):
+		csvfile = open('org_data.csv', 'wb')
+		datawriter = csv.writer(csvfile)
 
+		# Get the number of pages to iterate through
+		index_resp = self.session.get(BASE_URL + '/organizations?CurrentPage=1')
+		index_resp.raise_for_status()
+		soup = BeautifulSoup(index_resp.text, 'html.parser')
+		num_pages_tag = soup.find(class_ = "pageHeading-count")
+		num_pages = int(math.ceil(float(num_pages_tag.findAll('strong')[1].string) / 10))
+		
+		for i in range(1, num_pages + 1):
+			response = self.session.get(BASE_URL + '/organizations?CurrentPage=' + str(i))
+			response.raise_for_status()
+			soup = BeautifulSoup(response.text, 'html.parser')
+			for page in soup.find_all('h5'):
+				url = page.a['href'] 
+				try:
+					datawriter.writerow(self.parse_for_name_and_email(BASE_URL + url))
+				except Exception as e:
+					print e
+					sys.exit()
+				
+				
+			print '{}/{} completed'.format(i, num_pages)
+
+def main():
+	username = raw_input('Uniqname: ')
+	password = raw_input('Password: ')
+	maize = UserSession(username, password)
+	maize.run_all()
+
+if __name__ == "__main__":
+	main()
