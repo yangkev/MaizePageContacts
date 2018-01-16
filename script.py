@@ -1,4 +1,4 @@
-# /usr/local/bin
+#!/usr/bin/python3
 
 """
  script for scraping organization information off of Maize Pages
@@ -8,146 +8,139 @@
 
 import requests
 import csv
-import math
 import re
 import sys
+import getpass
+import json
 from bs4 import BeautifulSoup	
-from urlparse import urljoin
+from urllib.parse import urljoin
 
-BASE_URL = 'https://maizepages.umich.edu'
+BASE_URL = "https://maizepages.umich.edu"
+ORG_API_PATH = "api/discovery/search/organizations"
+NUM_ORGS = 2000
 
 class UserSession(object):
-	"""Class that authenticates a user for access to Maize Pages, and provides
-	methods for parsing and writing data to csv.
+  """Class that authenticates a user for access to Maize Pages, and provides
+  methods for parsing and writing data to csv.
 
-	Attributes:
-		session: requests session to persist cookies/authentication things
-	"""
-	def __init__(self, username, password):
-		self.session = requests.Session()
-		# Get cookie
-		response = self.session.get("https://maizepages.umich.edu/account/logon")
+  Attributes:
+    session: requests session to persist cookies/authentication things
+  """
+  def __init__(self, username=None, password=None):
+    self.session = requests.Session()
 
-		# Get input fields and create payload with username/password
-		payload ={}
-		soup = BeautifulSoup(response.text, 'html.parser')
-		for input in soup.find_all("input"):
-			payload[input.get("name")] = input.get("value")
-		payload['login'] = username
-		payload['password'] = password
+    if (username):
+      # Get cookie
+      response = self.session.get("https://maizepages.umich.edu/account/logon")
 
-		# Post to weblogin and subsequently go through all authentication steps
-		try:
-			self.send_post("https://weblogin.umich.edu/cosign-bin/cosign.cgi", payload)
-		except ValueError as e:
-			print "Error logging in with credentials"
-			sys.exit()
+      # Get input fields and create payload with username/password
+      payload ={}
+      soup = BeautifulSoup(response.text, 'html.parser')
+      for input in soup.find_all("input"):
+        payload[input.get("name")] = input.get("value")
+      payload['login'] = username
+      payload['password'] = password
 
-		try:
-			self.check_auth
-		except ValueError as e:
-			print e
-			sys.exit()
+      # Post to weblogin and subsequently go through all authentication steps
+      try:
+        print("Logging in...")
+        self.send_post("https://weblogin.umich.edu/cosign-bin/cosign.cgi", payload)
+      except ValueError as e:
+        print("Error logging in with credentials")
+        sys.exit()
 
-	# Description: Checks that authentication worked by searching for "Sign in"
-	#	in the HTTP response
-	def check_auth(self):
-		response = self.session.get("https://maizepages.umich.edu")
-		if(not 'Sign in' in response.text):
-			print "Logged in successfully"
-		else:
-			raise ValueError
+      try:
+        self.check_auth()
+      except ValueError as e:
+        print(e)
+        sys.exit()
 
-	# Description: Recursive function for jumping through all the authentication
-	#	steps 
-	def send_post(self, url, payload):
-		# Send HTTP POST request
-		response = self.session.post(url, data=payload)
-		response.raise_for_status()
-		
-		# Base case for returning after the appropriate post requests have been entered
-		if response.url == BASE_URL + '/':
-			return
+  # Description: Checks that authentication worked by searching for "Sign in"
+  #	in the HTTP response
+  def check_auth(self):
+    response = self.session.get("https://maizepages.umich.edu")
+    if(not 'Sign in' in response.text):
+      print("Logged in successfully")
+    else:
+      raise ValueError
 
-		soup = BeautifulSoup(response.text, 'html.parser')
+  # Description: Recursive function for jumping through all the authentication
+  #	steps 
+  def send_post(self, url, payload):
+    # Send HTTP POST request
+    response = self.session.post(url, data=payload)
+    response.raise_for_status()
 
-		# Construct the next url to recurse into
-		relative_url = soup.find('form').get('action')
-		absolute_url = urljoin(response.url, relative_url)
-		# Checks that recursion doesn't enter infinite loop
-		if absolute_url == url:
-			raise ValueError
+    # Base case for returning after the appropriate post requests have been entered
+    if response.url == BASE_URL + '/':
+      return
 
-		# Gather input fields into payload
-		payload.clear()
-		for input in soup.find_all("input"):
-			payload[input.get("name")] = input.get("value")
+    soup = BeautifulSoup(response.text, 'html.parser')
 
-		self.send_post(absolute_url, payload)
+    # Construct the next url to recurse into
+    relative_url = soup.find('form').get('action')
+    absolute_url = urljoin(response.url, relative_url)
+    # Checks that recursion doesn't enter infinite loop
+    if absolute_url == url:
+      raise ValueError
 
-	# Description: Takes in an organization's page url and 
-	#	returns a tuple containing (name, email, org name)
-	def parse_for_name_and_email(self, org_page_url):
-		response = self.session.get(org_page_url)
-		response.raise_for_status()
-		soup = BeautifulSoup(response.text, 'html.parser')
-		tag = soup.find(class_ = "member-modal")
-		
-		# Get name
-		name = tag.string
-		# Get email
-		email = ''
-		try:
-			email_resp = self.session.get(BASE_URL + tag['href'])
-			email_resp.raise_for_status()
-			email_soup = BeautifulSoup(email_resp.text, 'html.parser')
-			email_tag = email_soup.find(class_ = "email")
-			m = re.search('mailto:(.+)', email_tag['href'])
-		except:
-			# do nothing
-			pass
-		else:
-			if m:
-				email = m.group(1)
-		# Get org name
-		orgname = soup.find(class_='h2__avatarandbutton').get_text().encode('utf-8').strip()
+    # Gather input fields into payload
+    payload.clear()
+    for input in soup.find_all("input"):
+      payload[input.get("name")] = input.get("value")
 
-		return (name, email, orgname)
+    self.send_post(absolute_url, payload)
 
-	# Description: Visits each organization page on maizepages and calls
-	#	parse_for_name_and_email on each. Takes the results and outputs them
-	#	to a csv file.
-	def run_all(self):
-		csvfile = open('org_data.csv', 'wb')
-		datawriter = csv.writer(csvfile)
+  # Description: Takes in an organization's page url and 
+  #	returns a tuple containing (name, shortName, firstName, lastName, email)
+  def parse_for_name_and_email(self, org_page_url):
+    res = self.session.get(org_page_url)
+    res.raise_for_status()
+    p = re.compile("=\s(\{.+\})")
+    for match in p.finditer(res.text):
+      json_obj = json.loads(match.groups()[0])
+      org = json_obj["preFetchedData"]["organization"]
 
-		# Get the number of pages to iterate through
-		index_resp = self.session.get(BASE_URL + '/organizations?CurrentPage=1')
-		index_resp.raise_for_status()
-		soup = BeautifulSoup(index_resp.text, 'html.parser')
-		num_pages_tag = soup.find(class_ = "pageHeading-count")
-		num_pages = int(math.ceil(float(num_pages_tag.findAll('strong')[1].string) / 10))
-		
-		for i in range(1, num_pages + 1):
-			response = self.session.get(BASE_URL + '/organizations?CurrentPage=' + str(i))
-			response.raise_for_status()
-			soup = BeautifulSoup(response.text, 'html.parser')
-			for page in soup.find_all('h5'):
-				url = page.a['href'] 
-				try:
-					datawriter.writerow(self.parse_for_name_and_email(BASE_URL + url))
-				except Exception as e:
-					print e
-					sys.exit()
-				
-				
-			print '{}/{} completed'.format(i, num_pages)
+      name = org.get("name")
+      shortName = org.get("shortName")
 
+      primaryContact = org.get("primaryContact")
+      firstName = primaryContact.get("firstName")
+      lastName = primaryContact.get("lastName")
+      email = primaryContact.get("primaryEmailAddress")
+
+      return (name, shortName, firstName, lastName, email)
+
+  # Description: Visits each organization page on maizepages and calls
+  #	parse_for_name_and_email on each. Takes the results and outputs them
+  #	to a csv file.
+  def run_all(self):
+    csvfile = open('org_data.csv', 'w')
+    writer = csv.writer(csvfile)
+
+    # Get list of all orgs
+    payload = {"top": NUM_ORGS}
+    res = self.session.get(urljoin(BASE_URL, ORG_API_PATH), params=payload)
+    res.raise_for_status()
+    res_json = res.json()
+
+    numOrgs = len(res_json["value"])
+    completed = 0
+
+    for org in res_json["value"]:
+      website_key = org["WebsiteKey"] 
+      tup = self.parse_for_name_and_email(urljoin(BASE_URL, "organization/" + website_key))
+      writer.writerow(tup)
+
+      completed += 1
+      if (completed % 10 == 0):
+        sys.stdout.write('\r')
+        sys.stdout.write("Completed {} / {}".format(completed, numOrgs))
+        sys.stdout.flush()
+    
 def main():
-	username = raw_input('Uniqname: ')
-	password = raw_input('Password: ')
-	maize = UserSession(username, password)
-	maize.run_all()
+  maize = UserSession()
+  maize.run_all()
 
 if __name__ == "__main__":
-	main()
+  main()

@@ -1,10 +1,12 @@
 # MaizePageContacts
-A Python web-scraping script for getting contact information off of [MaizePages](https://maizepages.umich.edu)
+A Python3 web-scraping script for getting contact information off of [MaizePages](https://maizepages.umich.edu):
 
-Uses Python 2.7.13
+Example output:
 
-### Dependencies: 
+    Some Org Name, SON, John, Smith, johnsmith@email.com
 
-1. [BeautifulSoup](https://www.crummy.com/software/BeautifulSoup/)
-2. [Python Requests](http://docs.python-requests.org/en/master/)
-
+### To use:
+    $ virtualenv venv
+    $ source venv/bin/activate
+    $ pip install -r requirements.txt
+    $ ./script.py
