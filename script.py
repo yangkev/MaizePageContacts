@@ -12,7 +12,7 @@ import re
 import sys
 import getpass
 import json
-from bs4 import BeautifulSoup	
+from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
 BASE_URL = "https://maizepages.umich.edu"
@@ -65,7 +65,7 @@ class UserSession(object):
       raise ValueError
 
   # Description: Recursive function for jumping through all the authentication
-  #	steps 
+  #	steps
   def send_post(self, url, payload):
     # Send HTTP POST request
     response = self.session.post(url, data=payload)
@@ -91,7 +91,7 @@ class UserSession(object):
 
     self.send_post(absolute_url, payload)
 
-  # Description: Takes in an organization's page url and 
+  # Description: Takes in an organization's page url and
   #	returns a tuple containing (name, shortName, firstName, lastName, email)
   def parse_for_name_and_email(self, org_page_url):
     res = self.session.get(org_page_url)
@@ -128,7 +128,7 @@ class UserSession(object):
     completed = 0
 
     for org in res_json["value"]:
-      website_key = org["WebsiteKey"] 
+      website_key = org["WebsiteKey"]
       tup = self.parse_for_name_and_email(urljoin(BASE_URL, "organization/" + website_key))
       writer.writerow(tup)
 
@@ -137,7 +137,7 @@ class UserSession(object):
         sys.stdout.write('\r')
         sys.stdout.write("Completed {} / {}".format(completed, numOrgs))
         sys.stdout.flush()
-    
+
 def main():
   maize = UserSession()
   maize.run_all()
