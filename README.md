@@ -1,12 +1,13 @@
 # MaizePageContacts
-A Python3 web-scraping script for getting contact information off of [MaizePages](https://maizepages.umich.edu):
+A script for scraping contact information of student-orgs on  [MaizePages](https://maizepages.umich.edu).
 
-Example output:
+Output format:
+```
+<full org name>, <org short name>, <firstname>, <lastname>, <email>
+...
+```
 
-    Some Org Name, SON, John, Smith, johnsmith@email.com
-
-### To use:
-    $ virtualenv venv
-    $ source venv/bin/activate
-    $ pip install -r requirements.txt
-    $ ./script.py
+## Usage:
+```
+pipenv run python script.py
+```
