@@ -10,9 +10,9 @@ pip install MaizePageContacts
 ```
 
 ## Usage
+Run the scraping script and output data to `org_data.csv`
 ```
-# Run the scraping script and output data to org_data.csv
-$ maizescrape
+maizescrape
 ```
 
 Output format:
@@ -25,10 +25,6 @@ Output format:
 Get [Pipenv](https://pipenv.readthedocs.io/en/latest/).
 
 ```
-# Install dependencies
-$ pipenv install
-
-# Start a shell in the virtualenv
-$ pipenv shell
+pipenv run python setup.py develop
+pipenv run maizescrape
 ```
-
