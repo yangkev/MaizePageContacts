@@ -1,6 +1,6 @@
 # MaizePageContacts
-![image](https://img.shields.io/pypi/v/MaizePageContacts.svg?style=flat)
-![image](https://img.shields.io/pypi/l/MaizePageContacts.svg?style=flat)
+[![PyPI](https://img.shields.io/pypi/v/MaizePageContacts.svg?style=flat)](https://pypi.org/project/MaizePageContacts)
+[![license](https://img.shields.io/pypi/l/MaizePageContacts.svg?style=flat)](https://pypi.org/project/MaizePageContacts)
 
 A script for scraping contact information of student-orgs on  [MaizePages](https://maizepages.umich.edu).
 
